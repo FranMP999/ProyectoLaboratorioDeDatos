@@ -15,6 +15,7 @@ a una iteración con reentrenamiento para generarlo.
 '''
 
 import os
+import sys
 import subprocess
 from pathlib import Path
 import time
@@ -38,7 +39,7 @@ import shap
 
 import gradio as gr
 
-from transformation_functions import pre_construir_variables
+from transformation_functions import construir_variables, cruzar_frames, cruzar_frames_X_y
 
 #Configuraciones varias
 from optuna.samplers import TPESampler
@@ -85,16 +86,17 @@ def data_extraction(dir_name):
     # Esto debería descargarse de un repositorio
     df_clientes = pd.read_parquet("clientes.parquet")
     df_productos = pd.read_parquet("productos.parquet")
-    df_transacciones_viejo = pd.read_parquet("transacciones.parquet")
+    #df_transacciones_viejo = pd.read_parquet("transacciones.parquet")
 
     #Esto debería descargarse de otro lado
-    df_transacciones_nuevo = pd.read_parquet("transacciones_nuevo.parquet")
+    #df_transacciones_nuevo = pd.read_parquet("transacciones_nuevo.parquet")
 
-    df_transacciones = pd.concat([df_transacciones_viejo, df_transacciones_nuevo ])
+    #df_transacciones = pd.concat([df_transacciones_viejo, df_transacciones_nuevo ])
+    df_transacciones = pd.read_parquet("transacciones.parquet")
 
-    df_transacciones.to_csv(dir_path / "raw"/ "transacciones.csv")
-    df_clientes.to_csv(dir_path / "raw"/ "clientes.csv")
-    df_productos.to_csv(dir_path / "raw"/ "productos.csv")
+    df_transacciones.to_parquet(dir_path / "raw"/ "transacciones.parquet")
+    df_clientes.to_parquet(dir_path / "raw"/ "clientes.parquet")
+    df_productos.to_parquet(dir_path / "raw"/ "productos.parquet")
 
     #Esto debería subirse al repositorio
     df_transacciones.to_parquet("transacciones.parquet")
@@ -109,9 +111,9 @@ def cleaning_and_transformation(dir_name):
     for subdir in ["raw", "transformed"]:
         assert (dir_path/ subdir).exists(), f"El directorio {subdir} no ha sido creado."
 
-    df_clientes = pd.read_csv(dir_path / "raw"/ "clientes.csv").dropna()
-    df_transacciones = pd.read_csv(dir_path / "raw"/ "transacciones.csv").drop_duplicates()
-    df_productos= pd.read_csv(dir_path / "raw"/ "productos.csv")
+    df_clientes = pd.read_parquet(dir_path / "raw"/ "clientes.parquet").dropna()
+    df_transacciones = pd.read_parquet(dir_path / "raw"/ "transacciones.parquet").drop_duplicates()
+    df_productos= pd.read_parquet(dir_path / "raw"/ "productos.parquet")
 
     df_cruce = cruzar_frames(df_clientes, df_productos, df_transacciones)
     construir_variables(df_cruce).to_csv(dir_path / "transformed"/ "transformed_data.csv")
@@ -130,9 +132,9 @@ def split_data_and_transform(dir_name, random_seed=RANDOM_STATE):
     for subdir in ["raw", "splits"]:
         assert (dir_path/ subdir).exists(), f"El directorio {subdir} no ha sido creado."
 
-    df_clientes = pd.read_csv(dir_path / "raw"/ "clientes.csv").dropna()
-    df_transacciones = pd.read_csv(dir_path / "raw"/ "transacciones.csv").drop_duplicates()
-    df_productos= pd.read_csv(dir_path / "raw"/ "productos.csv")
+    df_clientes = pd.read_parquet(dir_path / "raw"/ "clientes.parquet").dropna()
+    df_transacciones = pd.read_parquet(dir_path / "raw"/ "transacciones.parquet").drop_duplicates()
+    df_productos= pd.read_parquet(dir_path / "raw"/ "productos.parquet")
 
 
     X, y = cruzar_frames_X_y(df_clientes, df_productos, df_transacciones)
@@ -172,6 +174,7 @@ def model_retraining(dir_name, random_seed=RANDOM_STATE):
         Esta lógica puede quedar implementada como tareas condicionales, 
         *placeholders* o módulos configurables, que se activarán más adelante.
     '''
+    print("running retraining...")
 
     dir_path = Path(dir_name)
     split_data_names = [
@@ -241,10 +244,10 @@ def model_retraining(dir_name, random_seed=RANDOM_STATE):
 
         trial_pipeline = Pipeline([
             ('column_transformer', column_transformers),
-            ("classifier", LGBMClassifier(random_state=random_seed, **lgbm_params))
+            ("classifier", LGBMClassifier(random_state=random_seed, verbosity=-1, **lgbm_params))
                               ])
         trial_pipeline.fit(
-            X_train, y_train,
+            X_train, y_train.values.ravel(),
         )
         #Guardamos el pipeline en el trial
         trial.set_user_attr("pipeline", trial_pipeline)
@@ -255,18 +258,19 @@ def model_retraining(dir_name, random_seed=RANDOM_STATE):
         return f1_score(y_test, yhat)
 
     study = optuna.create_study( direction="maximize")
-    study.optimize(objective, timeout=15*60)
+    study.optimize(objective, timeout=1*60)
 
     print("Número de trials:", len(study.trials))
     print("Mejor valor f1_score:", study.best_trial.value)
     print("Mejor hiperparámetros:", study.best_params)
 
     best_model = study.best_trial.user_attrs["pipeline"]
-    model = best_model.fit(pd.concat([X_train, X_test]))
+    model = best_model.fit(
+        pd.concat([X_train, X_test]),
+        pd.concat([y_train, y_test]).values.ravel()
+    )
+    
 
-
-    model_id = datetime.datetime.today().strftime("%H%m%s")
-    model_name =  f"pipe_{model_name}_{model_id}.joblib"
     joblib.dump(model, dir_path / "models" / "model.joblib")
 
     #Esto debería subirse al repositorio
@@ -295,7 +299,7 @@ def prediction_generation(data_dir):
     # Esto debería descargarse de un repositorio
     pipeline = joblib.load(model_path)
 
-    y_pred = pipe.predict(data)
+    y_pred = pipeline.predict(data)
     filtered_prediction = data[y_pred == 1][["customer_id", "product_id"]]
 
     # Esto debería guardarse en un repositorio
@@ -304,5 +308,25 @@ def prediction_generation(data_dir):
 
 
 if __name__ == "__main__":
-    print("We're working for you")
+    opts = [opt for opt in sys.argv[1:] if opt.startswith("--")]
 
+    dir_name = datetime.datetime.today().strftime("%Y-%m-%d")
+    dir_path = Path(dir_name)
+
+
+    create_folders(dir_name)
+    data_extraction(dir_name)
+
+    if ("--retrain" in opts) or not Path("model.joblib").exists():
+        print("retraining..")
+        split_data_and_transform(dir_name, random_seed=RANDOM_STATE)
+        model_retraining(dir_name, random_seed=RANDOM_STATE)
+
+    cleaning_and_transformation(dir_name)
+    prediction_generation(dir_name)
+
+    subprocess.run([
+        "rm",
+        "-r",
+        f"{dir_name}",
+    ])

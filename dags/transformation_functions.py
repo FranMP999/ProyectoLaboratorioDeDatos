@@ -54,8 +54,8 @@ def avg_purchase_period_df(df_in):
     el periodo de recompra promedio para cada SKU.
     ''' 
     max_period = (
-        df_in.purchase_date.dropna().explode.max()
-        - df_in.purchase_date.dropna().explode.min()
+        df_in.purchase_date.dropna().explode().max()
+        - df_in.purchase_date.dropna().explode().min()
         ).days
     return (
         df_in[["customer_id","product_id"]].merge(
@@ -73,8 +73,9 @@ def construir_variables(df_in):
     ''' 
     Función que realiza la construcción de variables sobre el dataframe de variables.
     ''' 
+    if len(df_in.shape) == 1: return df_in
+
     ultima_fecha = df_in.purchase_date.dropna().explode().max()
-    
     return df_in.assign(
         purchased_last_week=(
             df_in.purchase_date
@@ -125,10 +126,10 @@ def cruzar_frames_X_y(df_clientes, df_productos, df_transacciones):
             how="cross")
         .merge(
             df_transacciones
-            [df.purchase_date <= (df.purchase_date.max() - timedelta(weeks=1))] # RESTRICCIÓN TEMPORAL DE TRAINING
+            [df_transacciones.purchase_date <= (df_transacciones.purchase_date.max() - timedelta(weeks=1))] # RESTRICCIÓN TEMPORAL DE TRAINING
             .groupby(["customer_id", "product_id"]).agg(list).map(lambda x: np.array(x)),
             how="left", on=["customer_id", "product_id"])
-    )
+    ).sort_values(by=["customer_id","product_id"] )
 
     y = (
         df_clientes
@@ -143,13 +144,14 @@ def cruzar_frames_X_y(df_clientes, df_productos, df_transacciones):
         .merge(
             df_transacciones,
             how="left", on=["customer_id", "product_id"])
-        .query(f"purchase_date > '{(df.purchase_date.max() - timedelta(weeks=1))}'") # RESTRICCIÓN TEMPORAL DE TESTING
+        .query(f"purchase_date > '{(df_transacciones.purchase_date.max() - timedelta(weeks=1))}'") # RESTRICCIÓN TEMPORAL DE TESTING
         .assign(label=1)
         [["customer_id", "product_id", "label"]]
         .merge(
-            df_real[["customer_id", "product_id"]],
+            X[["customer_id", "product_id"]],
             how="right", on=["customer_id", "product_id"])
         .drop_duplicates()
         .fillna(0)
-    )
+    ).sort_values(by=["customer_id","product_id"] ).label
+    assert len(X) == len(y), "features y labels no coinciden en largo"
     return X, y
