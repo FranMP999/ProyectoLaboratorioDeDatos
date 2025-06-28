@@ -292,8 +292,8 @@ def prediction_generation(data_dir):
     '''
     dir_path = Path(dir_name)
     model_path = "model.joblib"
-    assert (dir_path/ "transformed").exists(), f"El directorio {"transformed"} no ha sido creado."
-    assert Path(model_path).exists(), f"No hay modelo en el directorio de trabajo."
+    assert (dir_path/ "transformed").exists(), "El directorio transformed no ha sido creado."
+    assert Path(model_path).exists(), "No hay modelo en el directorio de trabajo."
 
     data = pd.read_csv(dir_path / "transformed"/ "transformed_data.csv")
 
@@ -327,3 +327,4 @@ if __name__ == "__main__":
     subprocess.run([
         "rm", "-r", f"{dir_name}",
     ])
+
