@@ -276,6 +276,7 @@ def model_retraining(dir_name, random_seed=RANDOM_STATE):
     #Esto debería subirse al repositorio
     joblib.dump(model, "model.joblib")
 
+
 def prediction_generation(data_dir):
     '''
     - **Generación de predicciones**  
@@ -305,8 +306,6 @@ def prediction_generation(data_dir):
     # Esto debería guardarse en un repositorio
     filtered_prediction.to_csv("predicciones.csv", index=False)
 
-
-
 if __name__ == "__main__":
     opts = [opt for opt in sys.argv[1:] if opt.startswith("--")]
 
@@ -326,7 +325,5 @@ if __name__ == "__main__":
     prediction_generation(dir_name)
 
     subprocess.run([
-        "rm",
-        "-r",
-        f"{dir_name}",
+        "rm", "-r", f"{dir_name}",
     ])
