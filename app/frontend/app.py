@@ -1,3 +1,4 @@
+import numpy as np
 import gradio as gr
 import json
 from utils import get_backend_prediction
@@ -32,7 +33,7 @@ var_float = [
     "weekly_avg_distinct",
 ]
 
-with gr.Blocks(theme = gr.themes.Base()) as demo:
+with gr.Blocks(theme = gr.themes.Default()) as demo:
     gr.Markdown(
     """
     # Interfaz de Usuario Para Entrega 2 de Proyecto
@@ -45,44 +46,53 @@ with gr.Blocks(theme = gr.themes.Base()) as demo:
     Eso es todo! 
     """)
 
+    inputs = []
     with gr.Row():
-        with gr.Column():
-            inputs = {}
-            # Slider para las numéricas, checkbox para las binarias, dropdown o radio para las categóricas
-            for variable in var_categoricas:
-                inputs[variable] = gr.Dropdown(
-                    input_values[variable], label=variable, info="Seleccione según corresponda"
-                )
-
-            for variable in var_booleanas:
-                inputs[variable] = gr.Checkbox(
-                    label="Morning", info="Seleccione según corresponda"
-                )
-            for variable in var_enteras:
-                values = np.arra(input_values[variable])
-                min, max, mean = values.min(), values.max(), values.mean()
-                inputs[variable] = gr.Slider(
-                    label = variable, step=1,
-                    minimum = min, maximum = max, value = mean,
-                )
-            for variable in var_float:
-                values = np.arra(input_values[variable])
-                min, max, mean = values.min(), values.max(), values.mean()
-                inputs[variable] = gr.Slider(
-                    label = variable,
-                    minimum = min, maximum = max, value = mean,
-                )
-
-        with gr.Column():
-            label = gr.DataFrame(label = 'Predicción de Compra') 
-    
-    with gr.Row():
+        label = gr.Text(label = 'Predicción de Compra') 
         button = gr.Button(value = 'Predecir!')
+    with gr.Row():
+        with gr.Column():
+                # Slider para las numéricas, checkbox para las binarias, dropdown o radio para las categóricas
+            for variable in var_categoricas:
+                with gr.Row():
+                    if variable == "brand":
+                        inputs.append(gr.Dropdown(
+                            input_values[variable], label=variable, info="Seleccione según corresponda",
+                        ))
+                    else:
+                        inputs.append(gr.Radio(
+                            input_values[variable], label=variable, info="Seleccione según corresponda",
+                            value=input_values[variable][0]
+                        ))
+
+        with gr.Column():
+            with gr.Row():
+                for variable in var_booleanas:
+                    inputs.append( gr.Checkbox(
+                        label=variable, info="Seleccione según corresponda",
+                        value=True,
+                    ))
+            with gr.Row():
+                for variable in var_enteras:
+                    values = np.array(input_values[variable])
+                    min, max, mean = values.min(), values.max(), values.mean()
+                    inputs.append(gr.Slider(
+                        label = variable, step=1,
+                        minimum = min, maximum = max, value = min,
+                    ))
+                for variable in var_float:
+                    values = np.array(input_values[variable])
+                    min, max, mean = values.min(), values.max(), values.mean()
+                    inputs.append( gr.Slider(
+                        label = variable,
+                        minimum = min, maximum = max, value = mean,
+                    ))
+    
 
     # setear interactividad
     outputs = [label]
 
     # obtener predicción desde el backend
-    button.click(fn = get_backend_prediction, inputs = input, outputs = outputs) # esta linea invoca el backend
+    button.click(fn = get_backend_prediction, inputs = inputs, outputs = outputs) # esta linea invoca el backend
 
     demo.launch(server_name="0.0.0.0", server_port=7860)

@@ -57,21 +57,21 @@ def read_root():
 @app.post("/predict")
 def predict(data: SodAIData):
     features_df = pd.DataFrame({
-        "customer_type": data.customer_type,
-        "brand": data.brand,
-        "category": data.category,
-        "sub_category": data.sub_category,
-        "segment": data.segment,
-        "package": data.package,
-        "purchased_last_week": int(data.purchased_last_week),
-        "purchased_last_month": int(data.purchased_last_month),
-        "purchased_ever": int(data.purchased_ever),
-        "num_deliver_per_week": data.num_deliver_per_week,
-        "avg_purchase_period": data.avg_purchase_period,
-        "X": data.X,
-        "Y": data.Y,
-        "size": data.size,
-        "weekly_avg_distinct": data.weekly_avg_distinct,
+        "customer_type":        [data.customer_type],
+        "brand":                [data.brand],
+        "category":             [data.category],
+        "sub_category":         [data.sub_category],
+        "segment":              [data.segment],
+        "package":              [data.package],
+        "purchased_last_week":  [int(data.purchased_last_week)],
+        "purchased_last_month": [int(data.purchased_last_month)],
+        "purchased_ever":       [int(data.purchased_ever)],
+        "num_deliver_per_week": [data.num_deliver_per_week],
+        "avg_purchase_period":  [data.avg_purchase_period],
+        "X":                    [data.X],
+        "Y":                    [data.Y],
+        "size":                 [data.size],
+        "weekly_avg_distinct":  [data.weekly_avg_distinct],
         })
     label = model.predict(features_df)[0]
     
