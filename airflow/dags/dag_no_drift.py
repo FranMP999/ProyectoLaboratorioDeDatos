@@ -47,14 +47,14 @@ from airflow.operators.python import PythonOperator #para ejecutar funciones pyt
 from airflow.operators.python_operator import BranchPythonOperator
 from airflow.utils.dates import days_ago
 
-from hiring_dynamic_functions import (
+from functions import (
     create_folders,
-    download_dataset,
-    load_and_merge,
-    split_data,
-    train_model,
-    train_model,
-    evaluate_models,
+    data_extraction,
+    cleaning_and_transformation,
+    split_data_and_transform,
+    model_retraining,
+    prediction_generation,
+    choose_branch,
 )
 
 args = {
@@ -64,59 +64,42 @@ args = {
 }
 
 with DAG(
-    dag_id="hiring_dynamic",
+    dag_id="pipeline_entrega2proyecto",
     default_args=args,
-    description="MLops pipeline Lab 9",
-    start_date = pd.to_datetime("20241001"),
-    schedule="0 15 5 * *",
-    catchup=True,
+    description="MLops pipeline Entrega 2 Proyecto",
+    start_date = pd.to_datetime("20240101"),
+    schedule="0 0 * * 0",
+    catchup=False
 ) as dag:
 
 
     dummy_task = EmptyOperator(task_id="Iniciando_proceso", retries=2)
 
     task_create_folders = PythonOperator(
-        task_ide="create_folders",
+        task_id="create_folders",
         python_callable=create_folders,
         op_kwargs={"dir_name": "{{ ds }}"},
     )
 
     task_data_extraction = PythonOperator(
-        task_ide="data_extraction",
+        task_id="data_extraction",
         python_callable=data_extraction,
         op_kwargs={"dir_name": "{{ ds }}"},
     )
 
 
     task_cleaning_and_transformation = PythonOperator(
-        task_ide="cleaning_and_transformation",
+        task_id="cleaning_and_transformation",
         python_callable=cleaning_and_transformation,
-        op_kwargs={"dir_name": "{{ ds }}"},
-    )
-
-    task_prediction_generation = PythonOperator(
-        task_ide="prediction_generation",
-        python_callable=prediction_generation,
         op_kwargs={"dir_name": "{{ ds }}"},
         trigger_rule="one_success",
     )
 
-    # Función para determinar qué rama se ejecutará
-    def choose_branch(ds):
-        '''
-        Se elige la rama de reentrenamiento si es que no existe modelo en 
-        el directorio de trabajo o cada diez semanas a partir de la primera del 
-        año.
-        '''
-        exec_week = pd.to_datetime(ds).week
-        retrain_condition = (
-            exec_week%10 == 1
-            or not Path("./model.joblib").exists()
-        )
-        if retrain_condition:
-            return "split_data_and_transform"
-        else:
-            return "cleaning_and_transformation"
+    task_prediction_generation = PythonOperator(
+        task_id="prediction_generation",
+        python_callable=prediction_generation,
+        op_kwargs={"dir_name": "{{ ds }}"},
+    )
 
     # Branching task
     branch_task = BranchPythonOperator(
@@ -126,22 +109,20 @@ with DAG(
     )
 
     task_split_data_and_transform = PythonOperator(
-        task_ide="split_data_and_transform",
+        task_id="split_data_and_transform",
         python_callable=split_data_and_transform,
         op_kwargs={"dir_name": "{{ ds }}"},
     )
             
     task_model_retraining = PythonOperator(
-        task_ide="model_retraining",
+        task_id="model_retraining",
         python_callable=model_retraining,
         op_kwargs={"dir_name": "{{ ds }}"},
     )
 
 
 
-    dummy_task >> task_create_folders >> task_data_extraction >> \
-        branch_task >> [
-            task_cleaning_and_transformation,
-            task_split_data_and_transform >> task_model_retraining >> task_cleaning_and_transformation,
-            ] >> task_prediction_generation
-
+    dummy_task >> task_create_folders >> task_data_extraction >> branch_task 
+    branch_task >> [task_cleaning_and_transformation, task_split_data_and_transform ]
+    task_split_data_and_transform >> task_model_retraining >> task_cleaning_and_transformation
+    task_cleaning_and_transformation >> task_prediction_generation

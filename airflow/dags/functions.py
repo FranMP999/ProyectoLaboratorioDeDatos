@@ -3,15 +3,21 @@ Indicaciones relevantes de la entrega:
 
 Tanto el archivo de transacciones actualizado en cada iteración, como
 el modelo actualizado en cada reentrenammiento serán guardado en el directorio
-de trabajo `dags`, pero en producción deberían ser subidos a algún repositorio.
+loca `repositorio`, pero en producción deberían ser subidos a algún repositorio.
 Lo mismo con los archivos de clientes y productos.
+Los datos nuevos serán importados del directorio local `datos_nuevos`, simulando
+una fuente cualquiera de la que debieran ser obtenidos.
 
 Mientras que todos los archivos propios de la iteración serán guardados
 en una carpeta con nombre dado por la fecha de ejecución, siguiendo la práctica
 usual en el curso.
 
-Si no existe modelo en el directorio de trabajo `dags` el pipeline revertirá
+Las predicciones serán guardadas en el directorio de trabajo.
+
+Si no existe modelo en el repositorio externo, el pipeline revertirá
 a una iteración con reentrenamiento para generarlo.
+El trackeo de resultados se almacena en el directorio `train_logs`
+que debe ser montado en un volumen de docker.
 '''
 
 import os
@@ -23,8 +29,6 @@ import datetime
 import pandas as pd
 import numpy as np
 import joblib
-import matplotlib.pyplot as plt
-from pickle import dump, load
 
 
 from sklearn.model_selection import train_test_split
@@ -37,7 +41,6 @@ from lightgbm import LGBMClassifier
 import optuna
 import shap
 
-import gradio as gr
 
 from transformation_functions import construir_variables, cruzar_frames, cruzar_frames_X_y
 
@@ -47,6 +50,10 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 from sklearn import set_config
 set_config(transform_output="pandas")
 RANDOM_STATE=99
+#Estas carpetas locales simulan ser la fuente real de los datos en producción
+REPOSITORIO_EXTERNO=Path("repositorio")
+DIR_DATOS_NUEVOS=Path("datos_nuevos")
+
 
 def create_folders(dir_name):
     '''
@@ -72,34 +79,24 @@ def data_extraction(dir_name):
       - Asuman que los nuevos datos cuentan con la misma estructura de `transacciones.parquet`.
       - Para esta parte, pueden asumir que los datos aparecen *mágicamente* en su directorio de trabajo.
       - Pueden realizar supuestos adicionales, pero estos deben quedar evidenciados de forma clara y fácil de distinguir para su posterior revisión.
-      
-    EL CÓDIGO DEBERÍA EN CADA ITERACIÓN DESCARGAR transacciones.parquet HASTA T, clientes.parquet Y productos.parquet
-    DESDE UN REPOSITORIO EXTERNO Y RECIBIR LA DATA DE LA SEMANA T+1, UNIRLO AL transacciones.parquet YA EXISTENTE
-    ACTUALIZAR EL REPOSITORIO EXTERNO HASTA T+1 Y TRABAJAR CON ESTO.
-    EN LA ITERACIÓN ACTUAL DE LA TAREA, REEMPLAZARÉ EL REPOSITORIO EXTERNO CON EL DIRECTORIO DE TRABAJO, EN EL CUAL 
-    SUPONDRÉ QUE EXISTEN ARCHIVOS clientes.parquet, productos.parquet Y transacciones.parquet HASTA T Y
-    UN transacciones_nuevo.parquet, CON LA DATA DE LA SEMANA T+1.
     '''
     dir_path = Path(dir_name)
     assert (dir_path).exists(), f"El directorio principal no ha sido creado."
 
     # Esto debería descargarse de un repositorio
-    df_clientes = pd.read_parquet("clientes.parquet")
-    df_productos = pd.read_parquet("productos.parquet")
-    #df_transacciones_viejo = pd.read_parquet("transacciones.parquet")
+    df_clientes = pd.read_parquet(REPOSITORIO_EXTERNO / "clientes.parquet")
+    df_productos = pd.read_parquet(REPOSITORIO_EXTERNO / "productos.parquet")
+    df_transacciones_viejo = pd.read_parquet(REPOSITORIO_EXTERNO / "transacciones.parquet")
+    # Esto debería descargarse de otro lado
+    df_transacciones_nuevo = pd.read_parquet(DIR_DATOS_NUEVOS / "transacciones.parquet")
 
-    #Esto debería descargarse de otro lado
-    #df_transacciones_nuevo = pd.read_parquet("transacciones_nuevo.parquet")
-
-    #df_transacciones = pd.concat([df_transacciones_viejo, df_transacciones_nuevo ])
-    df_transacciones = pd.read_parquet("transacciones.parquet")
+    df_transacciones = pd.concat([df_transacciones_viejo, df_transacciones_nuevo ])
 
     df_transacciones.to_parquet(dir_path / "raw"/ "transacciones.parquet")
     df_clientes.to_parquet(dir_path / "raw"/ "clientes.parquet")
     df_productos.to_parquet(dir_path / "raw"/ "productos.parquet")
-
     #Esto debería subirse al repositorio
-    df_transacciones.to_parquet("transacciones.parquet")
+    df_transacciones.to_parquet(REPOSITORIO_EXTERNO / "transacciones.parquet")
 
 
 def cleaning_and_transformation(dir_name):
@@ -152,7 +149,7 @@ def split_data_and_transform(dir_name, random_seed=RANDOM_STATE):
         construir_variables(data).to_csv(dir_path / "splits" / name, index=False)
 
         
-def model_retraining(dir_name, random_seed=RANDOM_STATE):
+def model_retraining(dir_name, logs_path="logs", random_seed=RANDOM_STATE):
     '''
     - **Reentrenamiento del modelo**: Implementar una rutina de reentrenamiento 
     y trackeo de resultados. Además, esta etapa debe considerar:
@@ -175,6 +172,10 @@ def model_retraining(dir_name, random_seed=RANDOM_STATE):
         *placeholders* o módulos configurables, que se activarán más adelante.
     '''
     print("running retraining...")
+
+    logs_path = Path("train_logs")
+    assert  logs_path.exists(), "No existe directorio logs"
+    os.makedirs(logs_path / dir_name / "img", exist_ok=True)
 
     dir_path = Path(dir_name)
     split_data_names = [
@@ -260,9 +261,14 @@ def model_retraining(dir_name, random_seed=RANDOM_STATE):
     study = optuna.create_study( direction="maximize")
     study.optimize(objective, timeout=1*60)
 
-    print("Número de trials:", len(study.trials))
-    print("Mejor valor f1_score:", study.best_trial.value)
-    print("Mejor hiperparámetros:", study.best_params)
+    str_resultados = (
+        f"Número de trials: {len(study.trials)}\n"
+        f"Mejor valor f1_score: {study.best_trial.value}\n"
+        f"Mejor hiperparámetros:\n" 
+    ) + "\n\t".join([f"{param}: {value}" for param, value in study.best_params.items()])
+
+    with open(logs_path /dir_name / "resultados_entrenamiento.txt", "w") as text_file:
+        text_file.write(str_resultados)
 
     best_model = study.best_trial.user_attrs["pipeline"]
     model = best_model.fit(
@@ -274,10 +280,10 @@ def model_retraining(dir_name, random_seed=RANDOM_STATE):
     joblib.dump(model, dir_path / "models" / "model.joblib")
 
     #Esto debería subirse al repositorio
-    joblib.dump(model, "model.joblib")
+    joblib.dump(model, REPOSITORIO_EXTERNO / "model.joblib")
 
 
-def prediction_generation(data_dir):
+def prediction_generation(dir_name):
     '''
     - **Generación de predicciones**  
       - Utilizar el mejor modelo disponible para predecir, para cada par cliente-producto, si el cliente comprará ese producto la próxima semana.  
@@ -288,10 +294,9 @@ def prediction_generation(data_dir):
     El mejor modelo será extraído del directorio del repositorio ( provisionalmente directorio de trabajo).
 
     Finalmente la predicció será guardada en el directorio de trabajo.
-
     '''
     dir_path = Path(dir_name)
-    model_path = "model.joblib"
+    model_path = REPOSITORIO_EXTERNO / "model.joblib"
     assert (dir_path/ "transformed").exists(), "El directorio transformed no ha sido creado."
     assert Path(model_path).exists(), "No hay modelo en el directorio de trabajo."
 
@@ -305,6 +310,26 @@ def prediction_generation(data_dir):
 
     # Esto debería guardarse en un repositorio
     filtered_prediction.to_csv("predicciones.csv", index=False)
+
+
+# Función para determinar qué rama se ejecutará
+def choose_branch(ds):
+    '''
+    Se elige la rama de reentrenamiento si es que no existe modelo en 
+    el directorio de trabajo o cada diez semanas a partir de la primera del 
+    año.
+    '''
+    model_path = REPOSITORIO_EXTERNO / "model.joblib"
+    exec_week = pd.to_datetime(ds).week
+    retrain_condition = (
+        exec_week%10 == 1
+        or not Path(model_path).exists()
+    )
+    if retrain_condition:
+        return "split_data_and_transform"
+    else:
+        return "cleaning_and_transformation"
+
 
 if __name__ == "__main__":
     opts = [opt for opt in sys.argv[1:] if opt.startswith("--")]
