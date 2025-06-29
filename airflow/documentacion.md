@@ -2,7 +2,7 @@
 
 Comando docker para ejecución
 ```
-docker run -p 8080:8080 -v "./train_logs:/root/airflow/train_logs" entrega2-pipeline
+docker run -p 8080:8080 -v "./resultados:/root/airflow/resultados" entrega2-pipeline
 ```
 
 ## Indicaciones relevantes de la entrega

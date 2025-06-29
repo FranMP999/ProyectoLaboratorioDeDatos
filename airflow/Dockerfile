@@ -35,9 +35,12 @@ RUN airflow users create --role Admin --username admin --email admin \
 
 # Copia las carpetas necesarias al contenedor
 COPY ./dags $AIRFLOW_HOME/dags
-COPY ./train_logs $AIRFLOW_HOME/train_logs
 COPY ./repositorio $AIRFLOW_HOME/repositorio
 COPY ./datos_nuevos $AIRFLOW_HOME/datos_nuevos
+COPY ./resultados $AIRFLOW_HOME/resultados
+
+# Se guarda localmente el requirements.txt para replicabilidad
+RUN pip freeze > $AIRFLOW_HOME/resultados/requirements.txt
 
 # Comando para iniciar el servidor web y el scheduler
 CMD ["sh", "-c", "airflow webserver -p 8080 & airflow scheduler"]

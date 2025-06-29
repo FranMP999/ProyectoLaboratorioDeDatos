@@ -12,12 +12,15 @@ Mientras que todos los archivos propios de la iteración serán guardados
 en una carpeta con nombre dado por la fecha de ejecución, siguiendo la práctica
 usual en el curso.
 
-Las predicciones serán guardadas en el directorio de trabajo.
-
 Si no existe modelo en el repositorio externo, el pipeline revertirá
 a una iteración con reentrenamiento para generarlo.
-El trackeo de resultados se almacena en el directorio `train_logs`
-que debe ser montado en un volumen de docker.
+El trackeo de resultados de entrenamiento se almacena en el directorio `train_logs`
+dentro del volumen `resultados` que debe ser montado en un volumen de docker.
+
+
+Las predicciones, el modelo y el archivo requirements.txt (para poder cargar
+el modelo en otros contenedores con las mismas versiones de librerías) 
+serán guardados en el volumen `resultados` para poder ser accedidos localmente.
 '''
 
 import os
@@ -49,10 +52,10 @@ from optuna.samplers import TPESampler
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from sklearn import set_config
 set_config(transform_output="pandas")
-RANDOM_STATE=99
+RANDOM_STATE = 99
 #Estas carpetas locales simulan ser la fuente real de los datos en producción
-REPOSITORIO_EXTERNO=Path("repositorio")
-DIR_DATOS_NUEVOS=Path("datos_nuevos")
+REPOSITORIO_EXTERNO = Path("repositorio")
+DIR_DATOS_NUEVOS = Path("datos_nuevos")
 
 
 def create_folders(dir_name):
@@ -173,7 +176,7 @@ def model_retraining(dir_name, logs_path="logs", random_seed=RANDOM_STATE):
     '''
     print("running retraining...")
 
-    logs_path = Path("train_logs")
+    logs_path = Path("resultados/train_logs")
     assert  logs_path.exists(), "No existe directorio logs"
     os.makedirs(logs_path / dir_name / "img", exist_ok=True)
 
@@ -277,10 +280,10 @@ def model_retraining(dir_name, logs_path="logs", random_seed=RANDOM_STATE):
     )
     
 
-    joblib.dump(model, dir_path / "models" / "model.joblib")
-
+    joblib.dump(model, dir_path / "models" / "model.joblib") #para tener un historial de todos los modelos
+    joblib.dump(model, "resultados/model.joblib") #para acceder al modelo localmente
     #Esto debería subirse al repositorio
-    joblib.dump(model, REPOSITORIO_EXTERNO / "model.joblib")
+    joblib.dump(model, REPOSITORIO_EXTERNO / "model.joblib") #para almacenar el modelo junto con la data actualizada
 
 
 def prediction_generation(dir_name):
@@ -309,7 +312,7 @@ def prediction_generation(dir_name):
     filtered_prediction = data[y_pred == 1][["customer_id", "product_id"]]
 
     # Esto debería guardarse en un repositorio
-    filtered_prediction.to_csv("predicciones.csv", index=False)
+    filtered_prediction.to_csv("resultados/predicciones.csv", mode="a", index=False)
 
 
 # Función para determinar qué rama se ejecutará
