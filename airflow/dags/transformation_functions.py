@@ -94,7 +94,7 @@ def construir_variables(df_in):
         weekly_avg_distinct_df(df_in), how="left", on=["customer_id","product_id"]
     ).merge(
         avg_purchase_period_df(df_in), how="left", on=["customer_id","product_id"]
-    ).drop(columns=['customer_id', 'items', 'order_id', 'product_id', 'purchase_date'])
+    )
 
 def cruzar_frames(df_clientes, df_productos, df_transacciones):
     return (

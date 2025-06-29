@@ -32,6 +32,7 @@ import datetime
 import pandas as pd
 import numpy as np
 import joblib
+import matplotlib.pyplot as plt
 
 
 from sklearn.model_selection import train_test_split
@@ -117,7 +118,6 @@ def cleaning_and_transformation(dir_name):
 
     df_cruce = cruzar_frames(df_clientes, df_productos, df_transacciones)
     construir_variables(df_cruce).to_csv(dir_path / "transformed"/ "transformed_data.csv")
-    
 
 def drift_detection():
     pass
@@ -151,7 +151,6 @@ def split_data_and_transform(dir_name, random_seed=RANDOM_STATE):
     ):
         construir_variables(data).to_csv(dir_path / "splits" / name, index=False)
 
-        
 def model_retraining(dir_name, logs_path="logs", random_seed=RANDOM_STATE):
     '''
     - **Reentrenamiento del modelo**: Implementar una rutina de reentrenamiento 
@@ -177,7 +176,6 @@ def model_retraining(dir_name, logs_path="logs", random_seed=RANDOM_STATE):
     print("running retraining...")
 
     logs_path = Path("resultados/train_logs")
-    assert  logs_path.exists(), "No existe directorio logs"
     os.makedirs(logs_path / dir_name / "img", exist_ok=True)
 
     dir_path = Path(dir_name)
@@ -212,7 +210,6 @@ def model_retraining(dir_name, logs_path="logs", random_seed=RANDOM_STATE):
             "weekly_avg_distinct",
             "avg_purchase_period",
     ]
-
 
     def objective(trial):
         # Inserte su código acá
@@ -269,17 +266,19 @@ def model_retraining(dir_name, logs_path="logs", random_seed=RANDOM_STATE):
         f"Mejor valor f1_score: {study.best_trial.value}\n"
         f"Mejor hiperparámetros:\n" 
     ) + "\n\t".join([f"{param}: {value}" for param, value in study.best_params.items()])
-
+    print(str_resultados)
     with open(logs_path /dir_name / "resultados_entrenamiento.txt", "w") as text_file:
         text_file.write(str_resultados)
+        img_path = logs_path/ dir_name / "img"
+    optuna.visualization.plot_param_importances(study).write_html( img_path / "grafico_importancias.html")
+    optuna.visualization.plot_optimization_history(study).write_html( img_path / "grafico_historial_optimizacion.html")
+    optuna.visualization.plot_parallel_coordinate(study).write_html( img_path / "grafico_coor_par.html")
 
     best_model = study.best_trial.user_attrs["pipeline"]
     model = best_model.fit(
         pd.concat([X_train, X_test]),
         pd.concat([y_train, y_test]).values.ravel()
     )
-    
-
     joblib.dump(model, dir_path / "models" / "model.joblib") #para tener un historial de todos los modelos
     joblib.dump(model, "resultados/model.joblib") #para acceder al modelo localmente
     #Esto debería subirse al repositorio

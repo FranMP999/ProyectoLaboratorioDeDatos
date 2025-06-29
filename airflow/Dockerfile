@@ -21,6 +21,9 @@ RUN pip install pyarrow
 RUN pip install numpy
 RUN pip install optuna
 RUN pip install shap
+RUN pip install matplotlib
+RUN pip install plotly
+RUN pip install kaleido
 RUN pip install -U email-validator
 
 # Inicializa la base de datos de Airflow
@@ -40,7 +43,7 @@ COPY ./datos_nuevos $AIRFLOW_HOME/datos_nuevos
 COPY ./resultados $AIRFLOW_HOME/resultados
 
 # Se guarda localmente el requirements.txt para replicabilidad
-RUN pip freeze > $AIRFLOW_HOME/resultados/requirements.txt
+RUN pip freeze > $(AIRFLOW_HOME)/requirements.txt
 
 # Comando para iniciar el servidor web y el scheduler
 CMD ["sh", "-c", "airflow webserver -p 8080 & airflow scheduler"]
