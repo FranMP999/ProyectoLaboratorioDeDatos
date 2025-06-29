@@ -291,9 +291,9 @@ def prediction_generation(dir_name):
     Por indicación del docente, filtrará la combinación de clientes-productos 
     en el que su modelo prediga que se efectuará una compra (y = 1) 
 
-    El mejor modelo será extraído del directorio del repositorio ( provisionalmente directorio de trabajo).
+    El mejor modelo será extraído del directorio del repositorio.
 
-    Finalmente la predicció será guardada en el directorio de trabajo.
+    Finalmente la predicción será guardada en el directorio de trabajo.
     '''
     dir_path = Path(dir_name)
     model_path = REPOSITORIO_EXTERNO / "model.joblib"
